@@ -4,9 +4,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from openai import OpenAI
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
+# ==================================================
+# CONFIG
+# ==================================================
+
+MODEL_NAME = "qwen/qwen3-32b"
 
 st.set_page_config(
     page_title="CSV AI Agent",
@@ -14,61 +16,70 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 CSV AI Agent (OpenRouter + GPT)")
+st.title("📊 CSV AI Agent (OpenRouter + Qwen)")
 
-# --------------------------------------------------
+# ==================================================
 # SIDEBAR
-# --------------------------------------------------
+# ==================================================
 
 st.sidebar.header("⚙️ Configuration")
 
 api_key = st.sidebar.text_input(
-    "1. Enter OpenRouter API Key",
+    "OpenRouter API Key",
     type="password"
 )
 
 uploaded_file = st.sidebar.file_uploader(
-    "2. Upload CSV File",
+    "Upload CSV File",
     type=["csv"]
 )
 
 temperature = st.sidebar.slider(
     "Temperature",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.2
+    0.0,
+    1.0,
+    0.2
 )
 
 st.sidebar.divider()
 
 st.sidebar.info(
-    "Upload a CSV file and ask questions or generate charts using GPT."
+    f"Model: {MODEL_NAME}"
 )
 
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
+# ==================================================
+# OPENROUTER CLIENT
+# ==================================================
 
-if uploaded_file:
+def get_client(api_key):
+    return OpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1"
+    )
+
+# ==================================================
+# MAIN APP
+# ==================================================
+
+if uploaded_file is not None:
 
     try:
+
         df = pd.read_csv(uploaded_file)
 
         tab1, tab2 = st.tabs(
-            ["💬 Chat with Data", "📊 AI Visualizations"]
+            ["💬 Chat With Data", "📊 AI Visualizations"]
         )
 
-        # ==================================================
+        # ==========================================
         # TAB 1 - CHAT
-        # ==================================================
+        # ==========================================
 
         with tab1:
 
             st.subheader("📄 Dataset Preview")
 
             st.dataframe(df.head())
-
-            st.divider()
 
             user_input = st.text_area(
                 "Ask a question about your data",
@@ -80,17 +91,14 @@ if uploaded_file:
                 if not api_key:
                     st.warning("Please enter your OpenRouter API Key.")
 
-                elif not user_input:
+                elif not user_input.strip():
                     st.warning("Please enter a question.")
 
                 else:
 
                     try:
 
-                        client = OpenAI(
-                            api_key=api_key,
-                            base_url="https://openrouter.ai/api/v1"
-                        )
+                        client = get_client(api_key)
 
                         sample_data = df.head(20).to_string()
 
@@ -109,10 +117,10 @@ User Question:
 Provide a clear and concise answer.
 """
 
-                        with st.spinner("Analyzing data..."):
+                        with st.spinner("Analyzing..."):
 
                             response = client.chat.completions.create(
-                                model="qwen/qwen3-32b",
+                                model=MODEL_NAME,
                                 messages=[
                                     {
                                         "role": "user",
@@ -130,23 +138,24 @@ Provide a clear and concise answer.
                     except Exception as e:
                         st.error(f"Error: {e}")
 
-        # ==================================================
-        # TAB 2 - VISUALIZATION
-        # ==================================================
+        # ==========================================
+        # TAB 2 - VISUALIZATIONS
+        # ==========================================
 
         with tab2:
 
             st.subheader("📊 Generate AI Charts")
-            
+
             viz_input = st.text_area(
                 "Describe the chart you want",
+                height=150,
                 placeholder="""
-            Examples:
-            • Create a bar chart showing total transaction amount by category
-            • Show a histogram of transaction amounts
-            • Create a line chart showing monthly sales trends
-            """,
-                height=150
+Examples:
+• Create a bar chart of sales by category
+• Show a histogram of transaction amounts
+• Create a line chart of monthly revenue
+• Show top 10 products by sales
+"""
             )
 
             if st.button("Generate Visualization"):
@@ -154,42 +163,46 @@ Provide a clear and concise answer.
                 if not api_key:
                     st.warning("Please enter your OpenRouter API Key.")
 
-                elif not viz_input:
-                    st.warning("Please describe a visualization.")
+                elif not viz_input.strip():
+                    st.warning("Please describe a chart.")
 
                 else:
 
                     try:
 
-                        client = OpenAI(
-                            api_key=api_key,
-                            base_url="https://openrouter.ai/api/v1"
-                        )
+                        client = get_client(api_key)
 
                         prompt = f"""
-Generate ONLY executable Python code.
+You are an expert Python data visualization engineer.
 
-DataFrame name is df.
+Dataset Columns:
+{list(df.columns)}
 
 User Request:
 {viz_input}
 
-Rules:
-1. Use matplotlib and seaborn.
-2. Create figure using:
+Generate ONLY executable Python code.
+
+Requirements:
+
+- DataFrame name is df
+- Use matplotlib and seaborn
+- Start with:
 
 fig, ax = plt.subplots(figsize=(10,6))
 
-3. Store chart in variable fig.
-4. No markdown.
-5. No explanation.
-6. No plt.show().
+- Use only columns from the dataset
+- Store final chart in variable fig
+- Do not use markdown
+- Do not use explanations
+- Do not use comments
+- Do not use plt.show()
 """
 
-                        with st.spinner("Creating chart..."):
+                        with st.spinner("Creating Chart..."):
 
                             response = client.chat.completions.create(
-                                model="openai/gpt-latest",
+                                model=MODEL_NAME,
                                 messages=[
                                     {
                                         "role": "user",
@@ -201,10 +214,10 @@ fig, ax = plt.subplots(figsize=(10,6))
 
                             code = response.choices[0].message.content
 
-                            code = code.replace(
-                                "```python", ""
-                            ).replace(
-                                "```", ""
+                            code = (
+                                code.replace("```python", "")
+                                .replace("```", "")
+                                .strip()
                             )
 
                             local_vars = {
@@ -218,15 +231,15 @@ fig, ax = plt.subplots(figsize=(10,6))
 
                             fig = local_vars.get("fig")
 
-                            if fig:
-                                st.pyplot(fig)
-                            else:
-                                st.warning(
-                                    "No chart was generated."
-                                )
+                            if fig is None:
+                                fig = plt.gcf()
+
+                            st.pyplot(fig)
+
+                            plt.close(fig)
 
                             with st.expander(
-                                "View Generated Python Code"
+                                "🔍 View Generated Python Code"
                             ):
                                 st.code(
                                     code,
