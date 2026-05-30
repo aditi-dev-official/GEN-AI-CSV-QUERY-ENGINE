@@ -112,7 +112,7 @@ Provide a clear and concise answer.
                         with st.spinner("Analyzing data..."):
 
                             response = client.chat.completions.create(
-                                model="openai/gpt-latest",
+                                model="qwen/qwen3-32b",
                                 messages=[
                                     {
                                         "role": "user",
