@@ -2,7 +2,7 @@
 import os
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot
+import matplotlib.pyplot as plt
 import seaborn as sns
 
 from langchain_groq import ChatGroq
