@@ -137,11 +137,16 @@ Provide a clear and concise answer.
         with tab2:
 
             st.subheader("📊 Generate AI Charts")
-
-            viz_input = st.text_input(
+            
+            viz_input = st.text_area(
                 "Describe the chart you want",
-                placeholder="Show a bar chart of sales by category",
-                height=120
+                placeholder="""
+            Examples:
+            • Create a bar chart showing total transaction amount by category
+            • Show a histogram of transaction amounts
+            • Create a line chart showing monthly sales trends
+            """,
+                height=150
             )
 
             if st.button("Generate Visualization"):
