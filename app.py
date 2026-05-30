@@ -1,99 +1,239 @@
-## For app.py
-import os
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from openai import OpenAI
 
-from langchain_groq import ChatGroq
-from langchain_experimental.agents import create_pandas_dataframe_agent
+# --------------------------------------------------
+# PAGE CONFIG
+# --------------------------------------------------
 
-# ---- PAGE CONFIG ----
-st.set_page_config(page_title="CSV AI Agent", page_icon="📊", layout="wide")
+st.set_page_config(
+    page_title="CSV AI Agent",
+    page_icon="📊",
+    layout="wide"
+)
 
-st.title("📊 CSV AI Agent (Groq + LangChain)")
+st.title("📊 CSV AI Agent (OpenRouter + GPT)")
 
-# ---- SIDEBAR (Settings & Upload) ----
+# --------------------------------------------------
+# SIDEBAR
+# --------------------------------------------------
+
 st.sidebar.header("⚙️ Configuration")
 
-api_key = st.sidebar.text_input("1. Enter GROQ API Key", type="password")
+api_key = st.sidebar.text_input(
+    "1. Enter OpenRouter API Key",
+    type="password"
+)
 
-# File Uploader in Sidebar
-uploaded_file = st.sidebar.file_uploader("2. Upload your CSV file", type=["csv"])
+uploaded_file = st.sidebar.file_uploader(
+    "2. Upload CSV File",
+    type=["csv"]
+)
 
-temperature = st.sidebar.slider("Model Temperature", 0.0, 1.0, 0.0)
+temperature = st.sidebar.slider(
+    "Temperature",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.2
+)
 
 st.sidebar.divider()
-st.sidebar.info("This agent uses Llama-3.3-70b to analyze and visualize your data.")
 
-# ---- MAIN CONTENT ----
+st.sidebar.info(
+    "Upload a CSV file and ask questions or generate charts using GPT."
+)
+
+# --------------------------------------------------
+# LOAD DATA
+# --------------------------------------------------
+
 if uploaded_file:
-    # Load Data
-    df = pd.read_csv(uploaded_file)
 
-    # Tabs for better organization
-    tab1, tab2 = st.tabs(["💬 Chat with Data", "🎨 AI Visualizations"])
+    try:
+        df = pd.read_csv(uploaded_file)
 
-    with tab1:
-        st.subheader("📄 Data Preview")
-        st.dataframe(df.head(5))
-        st.divider()
-        
-        user_input = st.text_area("🗨️ Ask a question about this data:", placeholder="e.g., What is the average value of the sales column?")
+        tab1, tab2 = st.tabs(
+            ["💬 Chat with Data", "📊 AI Visualizations"]
+        )
 
-        if st.button("Generate Answer"):
-            if not api_key:
-                st.warning("⚠️ Please enter your GROQ API key in the sidebar.")
-            elif not user_input:
-                st.warning("⚠️ Please ask a question first.")
-            else:
-                try:
-                    os.environ["GROQ_API_KEY"] = api_key
-                    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=temperature)
-                    agent = create_pandas_dataframe_agent(llm, df, verbose=True, allow_dangerous_code=True)
+        # ==================================================
+        # TAB 1 - CHAT
+        # ==================================================
 
-                    with st.spinner("🤖 Thinking..."):
-                        response = agent.run(user_input)
-                        st.success("✅ Answer:")
-                        st.write(response)
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+        with tab1:
 
-    with tab2:
-        st.subheader("📊 Chat to Generate Charts")
-        st.write("Ask for a chart (e.g., 'Show a bar chart of the top 10 categories')")
-        
-        viz_input = st.text_input("Describe your visualization:", key="viz_input")
+            st.subheader("📄 Dataset Preview")
 
-        if st.button("Generate Visualization"):
-            if not api_key:
-                st.warning("⚠️ Please enter your GROQ API key.")
-            elif not viz_input:
-                st.warning("⚠️ Please describe a visualization.")
-            else:
-                try:
-                    os.environ["GROQ_API_KEY"] = api_key
-                    # Lower temperature is better for generating code
-                    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0) 
-                    
-                    agent = create_pandas_dataframe_agent(llm, df, verbose=True, allow_dangerous_code=True)
+            st.dataframe(df.head())
 
-                    with st.spinner("📈 Creating your chart..."):
-                        # Updated prompt: instruct the agent to use the fig, ax pattern
-                        full_prompt = (
-                            f"Create a visualization for: {viz_input}. "
-                            "Instruction: Use matplotlib and seaborn. Define the figure using 'fig, ax = plt.subplots()'. "
-                            "Do not call plt.show()."
+            st.divider()
+
+            user_input = st.text_area(
+                "Ask a question about your data",
+                placeholder="What is the average sales amount?"
+            )
+
+            if st.button("Generate Answer"):
+
+                if not api_key:
+                    st.warning("Please enter your OpenRouter API Key.")
+
+                elif not user_input:
+                    st.warning("Please enter a question.")
+
+                else:
+
+                    try:
+
+                        client = OpenAI(
+                            api_key=api_key,
+                            base_url="https://openrouter.ai/api/v1"
                         )
-                        
-                        agent.run(full_prompt)
-                        
-                        # Display the figure currently in matplotlib's buffer
-                        st.pyplot(plt.gcf())
-                        plt.close('all') # Clear memory to prevent chart overlapping
 
-                except Exception as e:
-                    st.error(f"Error generating plot: {str(e)}")
+                        sample_data = df.head(20).to_string()
+
+                        prompt = f"""
+You are an expert data analyst.
+
+Dataset Columns:
+{list(df.columns)}
+
+Dataset Sample:
+{sample_data}
+
+User Question:
+{user_input}
+
+Provide a clear and concise answer.
+"""
+
+                        with st.spinner("Analyzing data..."):
+
+                            response = client.chat.completions.create(
+                                model="openai/gpt-latest",
+                                messages=[
+                                    {
+                                        "role": "user",
+                                        "content": prompt
+                                    }
+                                ],
+                                temperature=temperature
+                            )
+
+                            answer = response.choices[0].message.content
+
+                            st.success("Answer Generated")
+                            st.write(answer)
+
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+        # ==================================================
+        # TAB 2 - VISUALIZATION
+        # ==================================================
+
+        with tab2:
+
+            st.subheader("📊 Generate AI Charts")
+
+            viz_input = st.text_input(
+                "Describe the chart you want",
+                placeholder="Show a bar chart of sales by category"
+            )
+
+            if st.button("Generate Visualization"):
+
+                if not api_key:
+                    st.warning("Please enter your OpenRouter API Key.")
+
+                elif not viz_input:
+                    st.warning("Please describe a visualization.")
+
+                else:
+
+                    try:
+
+                        client = OpenAI(
+                            api_key=api_key,
+                            base_url="https://openrouter.ai/api/v1"
+                        )
+
+                        prompt = f"""
+Generate ONLY executable Python code.
+
+DataFrame name is df.
+
+User Request:
+{viz_input}
+
+Rules:
+1. Use matplotlib and seaborn.
+2. Create figure using:
+
+fig, ax = plt.subplots(figsize=(10,6))
+
+3. Store chart in variable fig.
+4. No markdown.
+5. No explanation.
+6. No plt.show().
+"""
+
+                        with st.spinner("Creating chart..."):
+
+                            response = client.chat.completions.create(
+                                model="openai/gpt-latest",
+                                messages=[
+                                    {
+                                        "role": "user",
+                                        "content": prompt
+                                    }
+                                ],
+                                temperature=0
+                            )
+
+                            code = response.choices[0].message.content
+
+                            code = code.replace(
+                                "```python", ""
+                            ).replace(
+                                "```", ""
+                            )
+
+                            local_vars = {
+                                "df": df,
+                                "pd": pd,
+                                "plt": plt,
+                                "sns": sns
+                            }
+
+                            exec(code, {}, local_vars)
+
+                            fig = local_vars.get("fig")
+
+                            if fig:
+                                st.pyplot(fig)
+                            else:
+                                st.warning(
+                                    "No chart was generated."
+                                )
+
+                            with st.expander(
+                                "View Generated Python Code"
+                            ):
+                                st.code(
+                                    code,
+                                    language="python"
+                                )
+
+                    except Exception as e:
+                        st.error(
+                            f"Visualization Error: {e}"
+                        )
+
+    except Exception as e:
+        st.error(f"CSV Error: {e}")
 
 else:
-    st.info("👈 Please upload a CSV file in the sidebar to get started.")
+    st.info("👈 Upload a CSV file to get started.")
