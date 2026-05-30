@@ -141,6 +141,7 @@ Provide a clear and concise answer.
             viz_input = st.text_input(
                 "Describe the chart you want",
                 placeholder="Show a bar chart of sales by category"
+                height=120
             )
 
             if st.button("Generate Visualization"):
